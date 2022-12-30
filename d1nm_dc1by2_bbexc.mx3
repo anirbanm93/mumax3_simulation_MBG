@@ -1,0 +1,108 @@
+t1 := now()
+OutputFormat = OVF2_TEXT
+NX := 512
+NY := 1
+NZ := 8
+SetGridsize(NX, NY, NZ)
+SetCellSize(3.6e-9, 100e-9, 1e-09)
+EdgeSmooth = 8
+
+// no. of gratings
+n_gr := 10
+
+// groove features
+d_gr := 1e-09
+w_gr := 10.8e-09
+l_gr := 100e-09
+
+// duty cycle
+dc := 0.5
+
+// magnonic waveguide
+mc := cuboid(1843.2e-9, 100e-9, 8e-9)
+
+// starting of the grating region
+start_gr_region := -3.6e-09
+
+for i := 0; i < n_gr; i++ {
+	mc = mc.sub(cuboid(w_gr, l_gr, d_gr).transl((start_gr_region+(w_gr/2))+i*(w_gr/dc), 0, (4e-09)-(d_gr/2)))
+}
+
+SetGeom(mc)
+DefRegion(1, xrange(201.6, 651.6))
+saveas(geom, "Groove10NiFe")
+
+Msat = 800e3
+Aex = 1.3e-11
+alpha = 0.006
+
+// absorbing boundary layer
+alp_lo := 0.006
+alp_hi := 1
+
+// power of the polynomial ABL equation
+n := 2
+
+// length of a sub-layer
+del := 3.6e-9
+
+// length of the ABL
+l_abl := 270e-09
+
+// starting co-ordinate of ABLs on right and left side
+xstartL := -921.6e-09
+xstartR := 651.6e-09
+
+// no. of sublayer in an ABL
+n_sub_layer := l_abl/del
+print("No. of sublayer in the ABL:", n_sub_layer)
+
+// coefficient
+coeff := (alp_hi - alp_lo) / pow(l_abl, n)
+
+for k := 0; k < n_sub_layer; k++ {
+	// ABL on left side of the magnonic structure
+	x_currL := xstartL + (k * del)
+	alp_kL := coeff * pow((k*del - l_abl), n) + alp_lo
+	DefRegion(k+1, xrange(x_currL, x_currL+del))
+	alpha.setregion(k+1, alp_kL)
+
+	// ABL on right side of the magnonic structure
+	x_currR := xstartR + (k * del)
+	alp_kR := coeff * pow((k*del), n) + alp_lo
+	DefRegion(n_sub_layer+k+1, xrange(x_currR, x_currR+del))
+	alpha.setregion(n_sub_layer+k+1, alp_kR)
+}
+
+m.Loadfile("static_d1nm_dc1by2.out/m000000.ovf")
+
+// B-field
+exc_start := 150 // cell index along x-axis
+exc_gridsize := 30 // grid-size along x-axis
+kc := 0.3e9
+fc := 50e9
+t0 := 100e-12
+B := 0.069
+ang := 0 * (pi/180)
+B_ext = Vector(B*cos(ang), B*sin(ang), 0)
+mask := newVectorMask(NX, NY, NZ)
+x0 := -327.6e-9
+for u := exc_start; u < exc_start+exc_gridsize; u++ {
+	for v := 0; v < NY; v++ {
+		for w := 0; w < NZ; w++{
+		r := index2coord(u, v, w)
+		x := r.X()
+		y := r.Y()
+		z := r.z()
+		By := sinc(kc * (x-x0))
+		mask.setVector(u, v, w, vector(0, By, 0))
+	}
+}
+}
+B_ext.add(mask, 0.0034 * sinc(2 * pi * fc * (t - t0)))
+
+//tableAdd(m.Comp(1).Region(1))
+//tableAutoSave(1e-12)
+autosave(m_full, 4e-12)
+run(8e-09)
+print(since(t1))
